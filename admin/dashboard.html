@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin dashboard · Appex</title><link rel="stylesheet" href="../css/style.css"></head>
+<body data-root="../">
+<div id="header"></div>
+<main class="wrap">
+  <h1 class="page">Admin dashboard</h1><p class="sub">Overview of the whole marketplace</p>
+  <div class="cards" id="kpis"></div>
+  <div class="section-head"><h2>Waiting for approval</h2><a href="approvals.html">View all →</a></div>
+  <div id="pending"><p class="empty">Loading…</p></div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/core.js"></script>
+<script>
+(async () => {
+  const me = await requireRole(['admin']);
+  renderHeader(me, 'dash');
+  const [st, pend] = await Promise.all([
+    sb.rpc('admin_stats'),
+    sb.from('app_versions').select('id,version_name,created_at,apps(name,icon_path,profiles(full_name))')
+      .eq('status', 'pending').order('created_at').limit(5)
+  ]);
+  if (st.error) return toast(st.error.message, 'err');
+  const s = st.data;
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi"><span>Total apps</span><b>${fmtNum(s.total_apps)}</b><small>${fmtNum(s.live_apps)} live · ${fmtNum(s.suspended_apps)} suspended</small></div>
+    <div class="kpi"><span>Total downloads</span><b>${fmtNum(s.total_downloads)}</b></div>
+    <div class="kpi ${s.pending_approvals > 0 ? 'alert' : ''}"><span>Pending approvals</span><b>${fmtNum(s.pending_approvals)}</b><small>versions to review</small></div>
+    <div class="kpi"><span>Developers</span><b>${fmtNum(s.total_developers)}</b></div>
+    <div class="kpi ${s.pending_developers > 0 ? 'alert' : ''}"><span>Developers awaiting approval</span><b>${fmtNum(s.pending_developers)}</b><small><a href="users.html?f=pending">Review →</a></small></div>
+    <div class="kpi"><span>Users</span><b>${fmtNum(s.total_users)}</b></div>`;
+  const rows = pend.data || [];
+  document.getElementById('pending').innerHTML = rows.length
+    ? `<div class="tablewrap"><table><tr><th>App</th><th>Developer</th><th>Version</th><th>Uploaded</th></tr>
+       ${rows.map(r => `<tr><td><img class="mini" src="${iconUrl(r.apps.icon_path)}" alt="">${esc(r.apps.name)}</td>
+         <td>${esc(r.apps.profiles.full_name)}</td><td>${esc(r.version_name)}</td><td>${fmtDate(r.created_at)}</td></tr>`).join('')}
+       </table></div>`
+    : '<p class="empty">Nothing waiting — all caught up 🎉</p>';
+})();
+</script>
+</body></html>

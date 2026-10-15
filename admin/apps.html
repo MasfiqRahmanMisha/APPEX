@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>All apps · Appex</title><link rel="stylesheet" href="../css/style.css"></head>
+<body data-root="../">
+<div id="header"></div>
+<main class="wrap">
+  <h1 class="page">All apps</h1><p class="sub">Suspend an app to remove it from the store instantly.</p>
+  <div id="list"><p class="empty">Loading…</p></div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/core.js"></script>
+<script>
+async function load() {
+  const me = await requireRole(['admin']);
+  renderHeader(me, 'apps');
+  const { data, error } = await sb.rpc('admin_apps');
+  if (error) return toast(error.message, 'err');
+  document.getElementById('list').innerHTML = data.length ? `<div class="tablewrap"><table>
+    <tr><th>App</th><th>Developer</th><th>Category</th><th>Status</th><th>Downloads</th><th>Rating</th><th></th></tr>
+    ${data.map(a => `<tr>
+      <td><img class="mini" src="${iconUrl(a.icon_path)}" alt="">${esc(a.name)}<div class="hint">${esc(a.package_name)}</div></td>
+      <td>${esc(a.developer_name)}</td><td>${esc(a.category_name)}</td>
+      <td>${a.is_suspended ? badge('suspended', 'Suspended') : a.live_version ? badge('live', 'Live v' + a.live_version) : badge('pending', 'Not live')}
+          ${a.pending_versions > 0 ? badge('pending', a.pending_versions + ' pending') : ''}</td>
+      <td>${fmtNum(a.downloads)}</td><td>${a.avg_rating ? a.avg_rating + ' ★' : '—'}</td>
+      <td><button class="btn ${a.is_suspended ? '' : 'danger'} small" onclick="toggle('${a.id}', ${!a.is_suspended})">${a.is_suspended ? 'Restore' : 'Suspend'}</button></td></tr>`).join('')}
+    </table></div>` : '<p class="empty">No apps yet.</p>';
+}
+async function toggle(id, flag) {
+  if (flag && !confirm('Suspend this app? It will disappear from the store.')) return;
+  const { error } = await sb.rpc('admin_set_suspended', { p_app_id: id, p_flag: flag });
+  if (error) return toast(error.message, 'err');
+  toast(flag ? 'App suspended' : 'App restored'); load();
+}
+load();
+</script>
+</body></html>

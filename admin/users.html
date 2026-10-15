@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Users · Appex</title><link rel="stylesheet" href="../css/style.css"></head>
+<body data-root="../">
+<div id="header"></div>
+<main class="wrap">
+  <h1 class="page">Users &amp; developers</h1>
+  <p class="sub">Approve developers so they can upload. Banned accounts cannot sign in, download or upload.</p>
+  <div class="chips" style="margin-bottom:16px">
+    <a class="chip" data-f="all" href="#">All</a><a class="chip" data-f="pending" href="#">Pending developers</a>
+    <a class="chip" data-f="developer" href="#">Developers</a><a class="chip" data-f="user" href="#">Users</a>
+  </div>
+  <div id="list"><p class="empty">Loading…</p></div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/core.js"></script>
+<script>
+let all = [], filter = ['all', 'pending', 'developer', 'user'].includes(qs('f')) ? qs('f') : 'all';
+async function load() {
+  const me = await requireRole(['admin']);
+  renderHeader(me, 'users');
+  const { data, error } = await sb.from('profiles')
+    .select('id,full_name,email,role,is_banned,dev_approved,created_at').order('created_at', { ascending: false });
+  if (error) return toast(error.message, 'err');
+  all = data; draw();
+}
+function draw() {
+  document.querySelectorAll('.chip').forEach(x => x.classList.toggle('active', x.dataset.f === filter));
+  const rows = all.filter(u => filter === 'all' || u.role === filter || (filter === 'pending' && u.role === 'developer' && !u.dev_approved));
+  document.getElementById('list').innerHTML = rows.length ? `<div class="tablewrap"><table>
+    <tr><th>Name</th><th>Email</th><th>Role</th><th>Upload access</th><th>Joined</th><th>Status</th><th></th></tr>
+    ${rows.map(u => `<tr><td>${esc(u.full_name)}</td><td>${esc(u.email)}</td><td>${badge('role', u.role)}</td>
+      <td>${u.role === 'developer' ? (u.dev_approved ? badge('live', 'Approved') : badge('pending', 'Pending')) : ''}</td>
+      <td>${fmtDate(u.created_at)}</td><td>${u.is_banned ? badge('banned', 'Banned') : badge('live', 'Active')}</td>
+      <td><div class="actions">
+        ${u.role === 'developer' ? `<button class="btn ${u.dev_approved ? 'ghost' : ''} small" onclick="approve('${u.id}', ${!u.dev_approved})">${u.dev_approved ? 'Revoke' : 'Approve'}</button>` : ''}
+        ${u.role === 'admin' ? '' : `<button class="btn ${u.is_banned ? '' : 'danger'} small" onclick="ban('${u.id}', ${!u.is_banned})">${u.is_banned ? 'Unban' : 'Ban'}</button>`}
+      </div></td></tr>`).join('')}
+    </table></div>` : '<p class="empty">No accounts here.</p>';
+}
+document.querySelectorAll('.chip').forEach(c => c.onclick = e => { e.preventDefault(); filter = c.dataset.f; draw(); });
+async function approve(id, flag) {
+  if (!flag && !confirm('Revoke upload access for this developer?')) return;
+  const { error } = await sb.rpc('admin_set_developer_approval', { p_user_id: id, p_flag: flag });
+  if (error) return toast(error.message, 'err');
+  toast(flag ? 'Developer approved' : 'Upload access revoked'); load();
+}
+async function ban(id, flag) {
+  if (flag && !confirm('Ban this account?')) return;
+  const { error } = await sb.rpc('admin_set_ban', { p_user_id: id, p_flag: flag });
+  if (error) return toast(error.message, 'err');
+  toast(flag ? 'Account banned' : 'Account restored'); load();
+}
+load();
+</script>
+</body></html>
