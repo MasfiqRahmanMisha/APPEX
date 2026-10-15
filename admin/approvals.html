@@ -32,7 +32,7 @@ async function load() {
         <button class="btn ghost small" onclick="getApk('${r.id}')">Download APK</button>
         <button class="btn small" onclick="review('${r.id}', true)">Approve</button>
         <button class="btn danger small" onclick="review('${r.id}', false)">Reject</button></div></td></tr>`).join('')}
-    </table></div>` : '<p class="empty">No pending versions 🎉</p>';
+    </table></div>` : '<p class="empty">No pending versions</p>';
 }
 async function getApk(id) {
   const r = rows.find(x => x.id === id);
