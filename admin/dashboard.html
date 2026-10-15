@@ -36,7 +36,7 @@
        ${rows.map(r => `<tr><td><img class="mini" src="${iconUrl(r.apps.icon_path)}" alt="">${esc(r.apps.name)}</td>
          <td>${esc(r.apps.profiles.full_name)}</td><td>${esc(r.version_name)}</td><td>${fmtDate(r.created_at)}</td></tr>`).join('')}
        </table></div>`
-    : '<p class="empty">Nothing waiting — all caught up 🎉</p>';
+    : '<p class="empty">Nothing waiting — all caught up</p>';
 })();
 </script>
 </body></html>
