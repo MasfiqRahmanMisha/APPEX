@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Manage app · Appex</title><link rel="stylesheet" href="../css/style.css"></head>
+<body data-root="../">
+<div id="header"></div>
+<main class="wrap" id="main"><p class="empty">Loading…</p></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/core.js"></script>
+<script>
+const appId = qs('id');
+let me, nextCode = 1;
+
+async function load() {
+  me = await requireRole(['developer']);
+  renderHeader(me, 'dash');
+  const main = document.getElementById('main');
+
+  const { data: app } = await sb.from('apps').select('*, categories(name)').eq('id', appId).maybeSingle();
+  if (!app) return main.innerHTML = '<p class="empty">App not found.</p>';
+  const { data: versions } = await sb.from('app_versions').select('*').eq('app_id', appId).order('version_code', { ascending: false });
+  nextCode = (versions && versions.length ? versions[0].version_code : 0) + 1;
+
+  main.innerHTML = `
+    <p><a href="dashboard.html">← Dashboard</a></p>
+    <div class="app-head">
+      <img class="icon" src="${iconUrl(app.icon_path)}" alt="">
+      <div><h1>${esc(app.name)}</h1>
+        <div class="sub">${esc(app.package_name)} · ${esc(app.categories.name)}</div>
+        ${app.is_suspended ? badge('suspended', 'Suspended by admin') : ''}</div>
+    </div>
+    <div class="section-head"><h2>Versions</h2></div>
+    <div class="tablewrap"><table>
+      <tr><th>Version</th><th>Code</th><th>Size</th><th>Uploaded</th><th>Status</th><th>Note</th></tr>
+      ${versions.map(v => `<tr><td>${esc(v.version_name)}</td><td>${v.version_code}</td><td>${fmtSize(v.apk_size)}</td>
+        <td>${fmtDate(v.created_at)}</td><td>${badge(v.status, v.status)}</td>
+        <td style="white-space:normal">${esc(v.reject_reason || '')}</td></tr>`).join('')}
+    </table></div>
+
+    <div class="section-head"><h2>Upload a new version</h2></div>
+    <div id="vform" style="max-width:620px">
+      <div id="msg"></div>
+      <div class="row2">
+        <div><label>Version name</label><input id="vname" type="text" placeholder="1.0.1"></div>
+        <div><label>Version code (must be ≥ ${nextCode})</label><input id="vcode" type="number" min="${nextCode}" value="${nextCode}"></div>
+      </div>
+      <label>What’s new</label><textarea id="changelog" style="min-height:70px"></textarea>
+      <label>APK file (max 50 MB)</label><input id="apk" type="file" accept=".apk">
+      <p style="margin-top:20px"><button class="btn" id="go" onclick="addVersion()">Upload for review</button></p>
+    </div>`;
+  if (!me.dev_approved) document.getElementById('vform').innerHTML = '<div class="flash warn">Your developer account is waiting for admin approval, so new versions cannot be uploaded yet.</div>';
+}
+
+async function addVersion() {
+  const msg = document.getElementById('msg'), btn = document.getElementById('go');
+  const vname = document.getElementById('vname').value.trim();
+  const vcode = Number(document.getElementById('vcode').value);
+  const apk = document.getElementById('apk').files[0];
+  if (!vname) return flash(msg, 'Version name is required.');
+  if (!(vcode >= nextCode)) return flash(msg, 'Version code must be at least ' + nextCode + '.');
+  if (!apk) return flash(msg, 'Choose an APK file.');
+  if (apk.size > 50 * 1024 * 1024) return flash(msg, 'APK is larger than 50 MB.');
+  if (!(await looksLikeApk(apk))) return flash(msg, 'This does not look like a valid .apk file.');
+
+  flash(msg, ''); btn.disabled = true; btn.textContent = 'Uploading…';
+  const path = `${me.id}/${crypto.randomUUID()}.apk`;
+  try {
+    const up = await sb.storage.from('apks').upload(path, apk, { contentType: 'application/vnd.android.package-archive' });
+    if (up.error) throw up.error;
+    const ins = await sb.from('app_versions').insert({
+      app_id: appId, version_name: vname, version_code: vcode, apk_path: path, apk_size: apk.size,
+      changelog: document.getElementById('changelog').value.trim() || null });
+    if (ins.error) { await sb.storage.from('apks').remove([path]); throw ins.error; }
+    toast('Uploaded — waiting for admin approval'); load();
+  } catch (e) { flash(msg, e.message); btn.disabled = false; btn.textContent = 'Upload for review'; }
+}
+load();
+</script>
+</body></html>
