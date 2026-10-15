@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Upload app · Appex</title><link rel="stylesheet" href="../css/style.css"></head>
+<body data-root="../">
+<div id="header"></div>
+<main class="wrap">
+  <div class="form-card wide">
+    <h1>Upload a new app</h1>
+    <p class="sub">Your app goes live after an admin approves it.</p>
+    <div id="msg"></div>
+    <div class="row2">
+      <div><label>App name</label><input id="name" type="text" maxlength="60"></div>
+      <div><label>Category</label><select id="category"></select></div>
+    </div>
+    <label>Package name</label><input id="pkg" type="text" placeholder="com.company.appname">
+    <div class="hint">Must match the applicationId inside your APK. Cannot be changed later.</div>
+    <label>Short description (max 100 characters)</label><input id="short" type="text" maxlength="100">
+    <label>Full description</label><textarea id="desc"></textarea>
+    <div class="row2">
+      <div><label>Version name</label><input id="vname" type="text" placeholder="1.0.0"></div>
+      <div><label>Version code</label><input id="vcode" type="number" min="1" value="1"></div>
+    </div>
+    <label>What’s new (optional)</label><textarea id="changelog" style="min-height:70px"></textarea>
+    <div class="row2">
+      <div><label>App icon (PNG/JPG/WebP, max 2 MB)</label><input id="icon" type="file" accept="image/png,image/jpeg,image/webp"></div>
+      <div><label>APK file (max 50 MB)</label><input id="apk" type="file" accept=".apk"></div>
+    </div>
+    <p style="margin-top:24px"><button class="btn" id="go">Upload for review</button></p>
+  </div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/core.js"></script>
+<script>
+const MAX_APK = 50 * 1024 * 1024, MAX_ICON = 2 * 1024 * 1024;
+let me;
+(async () => {
+  me = await requireRole(['developer']);
+  renderHeader(me, 'upload');
+  if (!me.dev_approved) {
+    document.querySelector('.form-card').innerHTML = '<h1>Waiting for approval</h1><p class="sub">An admin has to approve your developer account before you can upload apps. Please check back soon.</p><a class="btn ghost" href="dashboard.html">Back to dashboard</a>';
+    return;
+  }
+  const { data } = await sb.from('categories').select('id,name').order('name');
+  document.getElementById('category').innerHTML = (data || []).map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+})();
+
+document.getElementById('go').onclick = async () => {
+  const msg = document.getElementById('msg'), btn = document.getElementById('go');
+  const v = id => document.getElementById(id).value.trim();
+  const apk = document.getElementById('apk').files[0], icon = document.getElementById('icon').files[0];
+  const pkgOk = /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/.test(v('pkg'));
+
+  if (v('name').length < 2 || !v('short') || !v('desc') || !v('vname')) return flash(msg, 'Please fill all required fields.');
+  if (!pkgOk) return flash(msg, 'Package name looks invalid. Example: com.company.myapp');
+  if (!(Number(v('vcode')) > 0)) return flash(msg, 'Version code must be a positive number.');
+  if (!apk || !icon) return flash(msg, 'Please choose both an APK file and an icon.');
+  if (apk.size > MAX_APK) return flash(msg, 'APK is larger than 50 MB (Supabase free plan limit).');
+  if (icon.size > MAX_ICON) return flash(msg, 'Icon is larger than 2 MB.');
+  if (!(await looksLikeApk(apk))) return flash(msg, 'This does not look like a valid .apk file.');
+
+  flash(msg, ''); btn.disabled = true; btn.textContent = 'Uploading… please wait';
+  const id = crypto.randomUUID();
+  const apkPath = `${me.id}/${id}.apk`;
+  const iconPath = `${me.id}/${id}.${fileExt(icon)}`;
+  const cleanup = () => Promise.all([sb.storage.from('apks').remove([apkPath]), sb.storage.from('icons').remove([iconPath])]);
+
+  try {
+    const u1 = await sb.storage.from('apks').upload(apkPath, apk, { contentType: 'application/vnd.android.package-archive' });
+    if (u1.error) throw u1.error;
+    const u2 = await sb.storage.from('icons').upload(iconPath, icon, { contentType: icon.type });
+    if (u2.error) throw u2.error;
+
+    const a = await sb.from('apps').insert({
+      developer_id: me.id, category_id: Number(v('category')), name: v('name'), package_name: v('pkg'),
+      short_desc: v('short'), description: v('desc'), icon_path: iconPath
+    }).select('id').single();
+    if (a.error) throw a.error.code === '23505' ? new Error('This package name is already taken.') : a.error;
+
+    const ver = await sb.from('app_versions').insert({
+      app_id: a.data.id, version_name: v('vname'), version_code: Number(v('vcode')),
+      apk_path: apkPath, apk_size: apk.size, changelog: v('changelog') || null
+    });
+    if (ver.error) { await sb.from('apps').delete().eq('id', a.data.id); throw ver.error; }
+
+    location.href = 'dashboard.html';
+  } catch (e) {
+    await cleanup();
+    flash(msg, e.message || 'Upload failed');
+    btn.disabled = false; btn.textContent = 'Upload for review';
+  }
+};
+</script>
+</body></html>

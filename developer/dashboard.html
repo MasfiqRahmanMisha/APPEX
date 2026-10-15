@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Developer dashboard · Appex</title><link rel="stylesheet" href="../css/style.css"></head>
+<body data-root="../">
+<div id="header"></div>
+<main class="wrap">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px">
+    <div><h1 class="page">Developer dashboard</h1><p class="sub" style="margin:0">Your apps, downloads and ratings</p></div>
+    <a class="btn" id="uploadBtn" href="upload.html">+ Upload new app</a>
+  </div>
+  <div id="gate"></div>
+  <div class="cards" id="kpis"></div>
+  <div class="section-head"><h2>My apps</h2></div>
+  <div id="apps"><p class="empty">Loading…</p></div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/core.js"></script>
+<script>
+(async () => {
+  const me = await requireRole(['developer']);
+  renderHeader(me, 'dash');
+  if (!me.dev_approved) {
+    document.getElementById('gate').innerHTML = '<div class="flash warn"><b>Your developer account is waiting for admin approval.</b> You can upload apps as soon as it is approved.</div>';
+    const u = document.getElementById('uploadBtn'); u.removeAttribute('href'); u.setAttribute('disabled', ''); u.style.opacity = '.5'; u.style.cursor = 'not-allowed';
+  }
+
+  const [stats, list] = await Promise.all([sb.rpc('developer_stats'), sb.rpc('developer_apps')]);
+  if (stats.error) return toast(stats.error.message, 'err');
+  const s = stats.data;
+
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi"><span>Apps launched</span><b>${fmtNum(s.apps_launched)}</b><small>${fmtNum(s.apps_total)} uploaded in total</small></div>
+    <div class="kpi"><span>Total downloads</span><b>${fmtNum(s.total_downloads)}</b></div>
+    <div class="kpi"><span>Overall rating</span><b>${s.overall_rating ? s.overall_rating + ' <span class="star">★</span>' : '—'}</b><small>${fmtNum(s.review_count)} reviews</small></div>
+    <div class="kpi"><span>Most downloaded app</span><b style="font-size:22px">${s.top_app ? esc(s.top_app.name) : '—'}</b><small>${s.top_app ? fmtNum(s.top_app.downloads) + ' downloads' : 'No downloads yet'}</small></div>
+    ${s.pending_versions > 0 ? `<div class="kpi alert"><span>Waiting for approval</span><b>${fmtNum(s.pending_versions)}</b><small>versions in review</small></div>` : ''}`;
+
+  const apps = list.data || [];
+  document.getElementById('apps').innerHTML = !apps.length
+    ? '<p class="empty">You have not uploaded any app yet. <a href="upload.html">Upload your first app</a></p>'
+    : `<div class="tablewrap"><table>
+        <tr><th>App</th><th>Status</th><th>Downloads</th><th>Rating</th><th>Category</th><th></th></tr>
+        ${apps.map(a => {
+          const status = a.is_suspended ? badge('suspended', 'Suspended')
+            : a.live_version ? badge('live', 'Live v' + a.live_version)
+            : a.pending_versions > 0 ? badge('pending', 'In review') : badge('rejected', 'Rejected');
+          const extra = a.live_version && a.pending_versions > 0 ? ' ' + badge('pending', a.pending_versions + ' pending') : '';
+          return `<tr>
+            <td><img class="mini" src="${iconUrl(a.icon_path)}" alt="">${esc(a.name)}</td>
+            <td>${status}${extra}</td>
+            <td>${fmtNum(a.downloads)}</td>
+            <td>${a.avg_rating ? a.avg_rating + ' ★ (' + a.review_count + ')' : '—'}</td>
+            <td>${esc(a.category_name)}</td>
+            <td><a class="btn ghost small" href="app.html?id=${a.id}">Manage</a></td></tr>`;
+        }).join('')}
+      </table></div>`;
+})();
+</script>
+</body></html>
