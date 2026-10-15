@@ -88,7 +88,7 @@ function renderHeader(profile, active = '') {
   else {
     if (profile.role === 'admin')
       nav = L('admin/dashboard.html', 'Dashboard', 'dash') + L('admin/approvals.html', 'Approvals', 'approvals') +
-            L('admin/apps.html', 'Apps', 'apps') + L('admin/users.html', 'Users', 'users');
+            L('admin/apps.html', 'Apps', 'apps') + L('admin/users.html', 'Users', 'users') + L('admin/invites.html', 'Invites', 'invites');
     else if (profile.role === 'developer')
       nav = L('developer/dashboard.html', 'Dashboard', 'dash') + L('developer/upload.html', 'Upload app', 'upload');
     nav += L('index.html', 'Store', 'store') +
