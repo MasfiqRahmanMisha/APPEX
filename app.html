@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>App · Appex</title><link rel="stylesheet" href="css/style.css"></head>
+<body data-root="">
+<div id="header"></div>
+<main class="wrap" id="main"><p class="empty">Loading…</p></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="js/config.js"></script>
+<script src="js/core.js"></script>
+<script>
+const appId = qs('id');
+let me = null, app = null;
+
+async function load() {
+  me = await getProfile();
+  renderHeader(me, 'store');
+  const main = document.getElementById('main');
+
+  const { data, error } = await sb.from('store_apps').select('*').eq('id', appId).maybeSingle();
+  if (error || !data) return main.innerHTML = '<p class="empty">App not found or not available.</p>';
+  app = data;
+  document.title = app.name + ' · Appex';
+
+  const { data: reviews } = await sb.from('app_reviews').select('*').eq('app_id', appId).order('created_at', { ascending: false });
+
+  let canReview = false, mine = null;
+  if (me) {
+    const { data: dl } = await sb.from('downloads').select('id').eq('app_id', appId).eq('user_id', me.id).limit(1);
+    canReview = !!(dl && dl.length);
+    const r = await sb.from('reviews').select('*').eq('app_id', appId).eq('user_id', me.id).maybeSingle();
+    mine = r.data;
+  }
+
+  const dlButton = me
+    ? '<button class="btn" id="dlbtn" onclick="download()">Download APK</button>'
+    : '<a class="btn" href="login.html?next=' + encodeURIComponent(location.pathname + location.search) + '">Sign in to download</a>';
+
+  main.innerHTML = `
+    <div class="app-head">
+      <img class="icon" src="${iconUrl(app.icon_path)}" alt="">
+      <div style="flex:1;min-width:220px">
+        <h1>${esc(app.name)}</h1>
+        <div><a href="index.html?cat=${esc(app.category_slug)}">${esc(app.category_name)}</a> · ${esc(app.developer_name)}</div>
+        <p class="sub" style="margin:8px 0 16px">${esc(app.short_desc)}</p>
+        ${dlButton}
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat"><b>${ratingText(app.avg_rating)}</b><span>${fmtNum(app.review_count)} reviews</span></div>
+      <div class="stat"><b>${fmtNum(app.download_count)}</b><span>Downloads</span></div>
+      <div class="stat"><b>${fmtSize(app.apk_size)}</b><span>Size</span></div>
+      <div class="stat"><b>${esc(app.version_name)}</b><span>Version</span></div>
+    </div>
+    <div class="section-head"><h2>About this app</h2></div>
+    <pre class="desc">${esc(app.description)}</pre>
+    ${app.changelog ? '<div class="section-head"><h2>What’s new</h2></div><pre class="desc">' + esc(app.changelog) + '</pre>' : ''}
+    <div class="section-head"><h2>Ratings &amp; reviews</h2></div>
+    <div id="reviewForm"></div>
+    <div id="reviews">${(reviews || []).length ? reviews.map(r => `
+      <div class="review"><b>${esc(r.full_name || 'User')}</b>
+      <span class="star">${'★'.repeat(r.rating)}</span><span style="color:#dadce0">${'★'.repeat(5 - r.rating)}</span>
+      <span class="hint"> · ${fmtDate(r.created_at)}</span>
+      <div>${esc(r.comment || '')}</div></div>`).join('') : '<p class="hint">No reviews yet.</p>'}</div>`;
+
+  const rf = document.getElementById('reviewForm');
+  if (me && canReview) {
+    rf.innerHTML = `<div class="flash" id="rmsg"></div>
+      <label>Your rating</label>
+      <select id="rating">${[5,4,3,2,1].map(n => '<option value="' + n + '"' + (mine && mine.rating === n ? ' selected' : '') + '>' + n + ' ★</option>').join('')}</select>
+      <label>Comment (optional)</label><textarea id="comment" maxlength="1000">${esc(mine ? mine.comment : '')}</textarea>
+      <p><button class="btn small" onclick="saveReview()">${mine ? 'Update review' : 'Submit review'}</button></p>`;
+  } else if (me) {
+    rf.innerHTML = '<p class="hint">Download the app to leave a review.</p>';
+  }
+}
+
+async function download() {
+  const btn = document.getElementById('dlbtn'); btn.disabled = true; btn.textContent = 'Preparing…';
+  try {
+    const { data: path, error } = await sb.rpc('record_download', { p_app_id: appId });
+    if (error) throw error;
+    const safe = app.name.replace(/[^\w.-]+/g, '_') + '-' + app.version_name + '.apk';
+    const signed = await sb.storage.from('apks').createSignedUrl(path, 60, { download: safe });
+    if (signed.error) throw signed.error;
+    location.href = signed.data.signedUrl;
+    setTimeout(load, 2500);                       // refresh counts + unlock review form
+  } catch (e) { toast(e.message, 'err'); }
+  finally { btn.disabled = false; btn.textContent = 'Download APK'; }
+}
+
+async function saveReview() {
+  const rating = Number(document.getElementById('rating').value);
+  const comment = document.getElementById('comment').value.trim() || null;
+  const { data: ex } = await sb.from('reviews').select('id').eq('app_id', appId).eq('user_id', me.id).maybeSingle();
+  const res = ex
+    ? await sb.from('reviews').update({ rating, comment, updated_at: new Date().toISOString() }).eq('id', ex.id)
+    : await sb.from('reviews').insert({ app_id: appId, user_id: me.id, rating, comment });
+  if (res.error) return toast(res.error.message, 'err');
+  toast('Review saved'); load();
+}
+load();
+</script>
+</body></html>

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Appex</title><link rel="stylesheet" href="css/style.css"></head>
+<body data-root="">
+<div id="header"></div>
+<main class="wrap">
+  <section class="hero" id="hero"><h1>Discover apps<br><span>made by real developers</span></h1><p>Download, rate and share Android apps — all in one clean place.</p></section>
+  <div class="chips" id="chips"></div>
+  <div id="content"><p class="empty">Loading…</p></div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="js/config.js"></script>
+<script src="js/core.js"></script>
+<script>
+(async () => {
+  const profile = await getProfile();
+  renderHeader(profile, 'store');
+
+  const q = (qs('q') || '').replace(/[,()%*]/g, ' ').trim();
+  const cat = qs('cat');
+  if (q || cat) document.getElementById('hero').remove();
+
+  const { data: cats } = await sb.from('categories').select('name,slug').order('name');
+  document.getElementById('chips').innerHTML =
+    '<a class="chip ' + (!cat ? 'active' : '') + '" href="index.html">All</a>' +
+    (cats || []).map(c => '<a class="chip ' + (cat === c.slug ? 'active' : '') + '" href="index.html?cat=' + c.slug + '">' + esc(c.name) + '</a>').join('');
+
+  const box = document.getElementById('content');
+  const grid = (title, apps) => apps.length
+    ? '<div class="section-head"><h2>' + title + '</h2></div><div class="grid">' + apps.map(appCard).join('') + '</div>' : '';
+
+  if (q || cat) {
+    let query = sb.from('store_apps').select('*').order('download_count', { ascending: false }).limit(60);
+    if (cat) query = query.eq('category_slug', cat);
+    if (q) query = query.or('name.ilike.%' + q + '%,short_desc.ilike.%' + q + '%');
+    const { data, error } = await query;
+    if (error) return box.innerHTML = '<div class="flash err">' + esc(error.message) + '</div>';
+    box.innerHTML = data.length ? grid(q ? 'Results for “' + esc(q) + '”' : 'Apps', data) : '<p class="empty">No apps found.</p>';
+    return;
+  }
+
+  const [top, fresh] = await Promise.all([
+    sb.from('store_apps').select('*').order('download_count', { ascending: false }).limit(8),
+    sb.from('store_apps').select('*').order('updated_at', { ascending: false }).limit(24)
+  ]);
+  if (top.error) return box.innerHTML = '<div class="flash err">' + esc(top.error.message) + '</div>';
+  box.innerHTML = (top.data.length || fresh.data.length)
+    ? grid('Most downloaded', top.data) + grid('New &amp; updated', fresh.data)
+    : '<p class="empty">No apps published yet.</p>';
+})();
+</script>
+</body></html>

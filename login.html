@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign in · Appex</title><link rel="stylesheet" href="css/style.css"></head>
+<body data-root="">
+<div id="header"></div>
+<main class="wrap">
+  <div class="form-card">
+    <h1 id="title">Sign in</h1><p class="sub" id="sub">Welcome back to Appex</p>
+    <div id="msg"></div>
+
+    <div id="stepLogin">
+      <label>Email</label><input id="email" type="email" autocomplete="email" placeholder="you@example.com">
+      <label>Password</label><input id="password" type="password" autocomplete="current-password">
+      <p style="margin-top:20px"><button class="btn" id="go">Sign in</button></p>
+      <p class="hint"><a class="link-btn" id="forgot">Forgot password?</a></p>
+    </div>
+
+    <div id="stepVerify" hidden>
+      <p class="hint" id="sentTo"></p>
+      <label>Verification code</label>
+      <input id="code" class="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="••••••">
+      <p style="margin-top:20px"><button class="btn" id="verify">Verify email</button></p>
+      <p class="hint"><a class="link-btn" id="resend">Resend code</a> · <a class="link-btn" id="back">Back</a></p>
+    </div>
+
+    <div id="stepForgot" hidden>
+      <label>Your email</label><input id="femail" type="email" autocomplete="email">
+      <p style="margin-top:20px"><button class="btn" id="sendReset">Send reset code</button></p>
+      <p class="hint"><a class="link-btn" id="back2">Back to sign in</a></p>
+    </div>
+
+    <div id="stepReset" hidden>
+      <p class="hint" id="resetTo"></p>
+      <label>Code from the email</label>
+      <input id="rcode" class="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="••••••">
+      <label>New password (min 8 characters)</label><input id="newpw" type="password" autocomplete="new-password">
+      <p style="margin-top:20px"><button class="btn" id="doReset">Set new password</button></p>
+    </div>
+
+    <p class="hint" style="margin-top:18px">New to Appex? <a href="register.html">Create an account</a></p>
+  </div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="js/config.js"></script>
+<script src="js/core.js"></script>
+<script>
+renderHeader(null, 'login');
+const $ = id => document.getElementById(id), msg = $('msg');
+const STEPS = ['stepLogin', 'stepVerify', 'stepForgot', 'stepReset'];
+const show = id => { STEPS.forEach(s => $(s).hidden = s !== id); flash(msg, ''); };
+let email = '';
+
+async function done() {
+  const p = await getProfile();
+  if (!p) { await sb.auth.signOut(); return flash(msg, 'This account is not allowed to sign in.'); }
+  location.href = safeNext(qs('next')) || homeFor(p.role);
+}
+
+/* ---- 1) email + password ---- */
+async function login() {
+  email = $('email').value.trim().toLowerCase();
+  if (!validEmail(email) || !$('password').value) return flash(msg, 'Enter your email and password.');
+  $('go').disabled = true; flash(msg, '');
+  const { error } = await sb.auth.signInWithPassword({ email, password: $('password').value });
+  $('go').disabled = false;
+  if (!error) return done();
+  if (/not confirmed/i.test(error.message)) {            // registered earlier but never verified the email
+    await AUTH.resend(email);
+    $('sentTo').textContent = 'Your email is not verified yet. We sent a code to ' + email + '.';
+    show('stepVerify'); $('code').focus(); cooldown($('resend')); return;
+  }
+  flash(msg, AUTH.friendly(error));
+}
+$('go').onclick = login;
+$('password').addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+
+/* ---- 2) verify email (only needed once, for unverified accounts) ---- */
+$('verify').onclick = async () => {
+  const code = $('code').value.replace(/\s/g, '');
+  if (!/^\d{6,10}$/.test(code)) return flash(msg, 'Enter the numeric code from the email.');
+  $('verify').disabled = true;
+  const { error } = await AUTH.verify(email, code, 'signup');
+  $('verify').disabled = false;
+  if (error) return flash(msg, AUTH.friendly(error));
+  done();
+};
+$('resend').onclick = async () => {
+  if ($('resend').dataset.locked) return;
+  const { error } = await AUTH.resend(email);
+  if (error) return flash(msg, AUTH.friendly(error));
+  flash(msg, 'New code sent.', 'ok'); cooldown($('resend'));
+};
+$('back').onclick = () => show('stepLogin');
+
+/* ---- 3) forgot password: code by email, then choose a new password ---- */
+$('forgot').onclick = () => { $('femail').value = $('email').value; show('stepForgot'); };
+$('back2').onclick = () => show('stepLogin');
+$('sendReset').onclick = async () => {
+  email = $('femail').value.trim().toLowerCase();
+  if (!validEmail(email)) return flash(msg, 'Enter a valid email address.');
+  $('sendReset').disabled = true;
+  const { error } = await sb.auth.resetPasswordForEmail(email);
+  $('sendReset').disabled = false;
+  if (error) return flash(msg, AUTH.friendly(error));
+  $('resetTo').textContent = 'If an account exists for ' + email + ', we sent a code to it.';
+  show('stepReset'); $('rcode').focus();
+};
+$('doReset').onclick = async () => {
+  const code = $('rcode').value.replace(/\s/g, ''), pw = $('newpw').value;
+  if (!/^\d{6,10}$/.test(code)) return flash(msg, 'Enter the numeric code from the email.');
+  if (pw.length < 8) return flash(msg, 'Password must be at least 8 characters.');
+  $('doReset').disabled = true;
+  const v = await AUTH.verify(email, code, 'recovery');
+  if (v.error) { $('doReset').disabled = false; return flash(msg, AUTH.friendly(v.error)); }
+  const u = await sb.auth.updateUser({ password: pw });
+  $('doReset').disabled = false;
+  if (u.error) return flash(msg, AUTH.friendly(u.error));
+  done();
+};
+</script>
+</body></html>

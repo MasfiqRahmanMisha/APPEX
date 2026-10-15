@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Register · Appex</title><link rel="stylesheet" href="css/style.css"></head>
+<body data-root="">
+<div id="header"></div>
+<main class="wrap">
+  <div class="form-card">
+    <h1>Create account</h1><p class="sub">Join Appex — free for users and developers</p>
+    <div id="msg"></div>
+
+    <div id="stepForm">
+      <label>Full name</label><input id="name" type="text" autocomplete="name">
+      <label>Email</label><input id="email" type="email" autocomplete="email" placeholder="you@example.com">
+      <label>Password (min 8 characters)</label><input id="password" type="password" autocomplete="new-password">
+      <label>I want to</label>
+      <div class="seg">
+        <label><input type="radio" name="role" value="user" checked> Download apps</label>
+        <label><input type="radio" name="role" value="developer"> Publish apps</label>
+      </div>
+      <div class="hint">Developer accounts are reviewed by an admin before you can upload.</div>
+      <p style="margin-top:20px"><button class="btn" id="go">Create account</button></p>
+    </div>
+
+    <div id="stepVerify" hidden>
+      <p class="hint" id="sentTo"></p>
+      <label>Verification code</label>
+      <input id="code" class="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="••••••">
+      <p style="margin-top:20px"><button class="btn" id="verify">Verify &amp; continue</button></p>
+      <p class="hint">You only verify once — next time just sign in with your password.</p>
+      <p class="hint"><a class="link-btn" id="resend">Resend code</a> · <a class="link-btn" id="change">Change details</a></p>
+    </div>
+
+    <p class="hint" style="margin-top:18px">Already have an account? <a href="login.html">Sign in</a></p>
+  </div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="js/config.js"></script>
+<script src="js/core.js"></script>
+<script>
+renderHeader(null, 'login');
+const $ = id => document.getElementById(id), msg = $('msg');
+let email = '';
+
+async function done() {
+  const p = await getProfile();
+  if (!p) { await sb.auth.signOut(); return flash(msg, 'This account is not allowed to sign in.'); }
+  location.href = homeFor(p.role);
+}
+
+$('go').onclick = async () => {
+  email = $('email').value.trim().toLowerCase();
+  const full_name = $('name').value.trim(), password = $('password').value;
+  const role = document.querySelector('input[name=role]:checked').value;
+  if (!full_name) return flash(msg, 'Please enter your name.');
+  if (!validEmail(email)) return flash(msg, 'Enter a valid email address.');
+  if (password.length < 8) return flash(msg, 'Password must be at least 8 characters.');
+  $('go').disabled = true; flash(msg, '');
+  const { data, error } = await sb.auth.signUp({ email, password, options: { data: { full_name, role } } });
+  $('go').disabled = false;
+  if (error) return flash(msg, AUTH.friendly(error));
+  // Supabase hides "already registered" by returning a user without identities
+  if (data.user && data.user.identities && data.user.identities.length === 0)
+    return flash(msg, 'This email is already registered. Please sign in.');
+  if (data.session) return done();                       // email confirmation is switched off in Supabase
+  $('sentTo').textContent = 'We sent a verification code to ' + email + '. It may take a minute — check spam too.';
+  $('stepForm').hidden = true; $('stepVerify').hidden = false; $('code').focus(); cooldown($('resend'));
+};
+
+$('verify').onclick = async () => {
+  const code = $('code').value.replace(/\s/g, '');
+  if (!/^\d{6,10}$/.test(code)) return flash(msg, 'Enter the numeric code from the email.');
+  $('verify').disabled = true;
+  const { error } = await AUTH.verify(email, code, 'signup');
+  $('verify').disabled = false;
+  if (error) return flash(msg, AUTH.friendly(error));
+  done();
+};
+$('code').addEventListener('keydown', e => { if (e.key === 'Enter') $('verify').click(); });
+$('resend').onclick = async () => {
+  if ($('resend').dataset.locked) return;
+  const { error } = await AUTH.resend(email);
+  if (error) return flash(msg, AUTH.friendly(error));
+  flash(msg, 'New code sent.', 'ok'); cooldown($('resend'));
+};
+$('change').onclick = () => { $('stepVerify').hidden = true; $('stepForm').hidden = false; flash(msg, ''); };
+</script>
+</body></html>
