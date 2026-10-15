@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Developer invites · Appex</title><link rel="stylesheet" href="../css/style.css"></head>
+<body data-root="../">
+<div id="header"></div>
+<main class="wrap">
+  <h1 class="page">Developer invites</h1>
+  <p class="sub">Developers can only join through a link you create here. Each link works once, for one email.</p>
+
+  <div class="form-card wide" style="margin:0 0 24px;max-width:none">
+    <div id="msg"></div>
+    <div class="row2">
+      <div><label>Developer’s email</label><input id="email" type="email" placeholder="developer@example.com"></div>
+      <div><label>Link valid for</label>
+        <select id="days"><option value="3">3 days</option><option value="7" selected>7 days</option><option value="14">14 days</option><option value="30">30 days</option></select></div>
+    </div>
+    <p style="margin-top:18px"><button class="btn" id="create">Create invite link</button></p>
+    <div id="fresh" hidden>
+      <label>Send this link to the developer</label>
+      <div style="display:flex;gap:8px"><input id="freshLink" type="text" readonly><button class="btn ghost" id="copyFresh">Copy</button></div>
+    </div>
+  </div>
+
+  <div class="section-head"><h2>All invites</h2></div>
+  <div id="list"><p class="empty">Loading…</p></div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/core.js"></script>
+<script>
+const $ = id => document.getElementById(id), msg = $('msg');
+const linkFor = t => new URL('../register.html', location.href).href + '?invite=' + t;
+let rows = [];
+
+async function copy(text) {
+  try { await navigator.clipboard.writeText(text); toast('Link copied'); }
+  catch (e) { prompt('Copy this link:', text); }
+}
+
+async function load() {
+  const me = await requireRole(['admin']);
+  renderHeader(me, 'invites');
+  const { data, error } = await sb.rpc('admin_invites');
+  if (error) return toast(error.message, 'err');
+  rows = data;
+  $('list').innerHTML = rows.length ? `<div class="tablewrap"><table>
+    <tr><th>Email</th><th>Status</th><th>Created</th><th>Expires</th><th></th></tr>
+    ${rows.map(r => {
+      const expired = !r.used_at && new Date(r.expires_at) < new Date();
+      const st = r.used_at ? badge('approved', 'Used' + (r.used_by_name ? ' by ' + r.used_by_name : ''))
+               : expired ? badge('rejected', 'Expired') : badge('pending', 'Active');
+      const acts = (!r.used_at && !expired)
+        ? `<div class="actions"><button class="btn ghost small" onclick="copyRow('${r.id}')">Copy link</button>
+           <button class="btn danger small" onclick="revoke('${r.id}')">Revoke</button></div>`
+        : (!r.used_at ? `<button class="btn danger small" onclick="revoke('${r.id}')">Delete</button>` : '');
+      return `<tr><td>${esc(r.email)}</td><td>${st}</td><td>${fmtDate(r.created_at)}</td><td>${fmtDate(r.expires_at)}</td><td>${acts}</td></tr>`;
+    }).join('')}</table></div>` : '<p class="empty">No invites yet.</p>';
+}
+function copyRow(id) { copy(linkFor(rows.find(r => r.id === id).token)); }
+
+$('create').onclick = async () => {
+  const email = $('email').value.trim();
+  if (!validEmail(email)) return flash(msg, 'Enter a valid email address.');
+  $('create').disabled = true; flash(msg, '');
+  const { data, error } = await sb.rpc('admin_create_invite', { p_email: email, p_days: Number($('days').value) });
+  $('create').disabled = false;
+  if (error) return flash(msg, error.message);
+  $('freshLink').value = linkFor(data); $('fresh').hidden = false; $('email').value = '';
+  copy(linkFor(data)); load();
+};
+$('copyFresh').onclick = () => copy($('freshLink').value);
+
+async function revoke(id) {
+  if (!confirm('Remove this invite link? It will stop working.')) return;
+  const { error } = await sb.rpc('admin_revoke_invite', { p_id: id });
+  if (error) return toast(error.message, 'err');
+  toast('Invite removed'); load();
+}
+load();
+</script>
+</body></html>
