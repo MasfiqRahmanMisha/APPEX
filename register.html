@@ -5,19 +5,14 @@
 <div id="header"></div>
 <main class="wrap">
   <div class="form-card">
-    <h1>Create account</h1><p class="sub">Join Appex — free for users and developers</p>
+    <h1 id="title">Create account</h1><p class="sub" id="sub">Join Appex and discover great apps</p>
     <div id="msg"></div>
 
     <div id="stepForm">
       <label>Full name</label><input id="name" type="text" autocomplete="name">
       <label>Email</label><input id="email" type="email" autocomplete="email" placeholder="you@example.com">
+      <div class="hint" id="inviteHint" hidden>This email comes from your invite and cannot be changed.</div>
       <label>Password (min 8 characters)</label><input id="password" type="password" autocomplete="new-password">
-      <label>I want to</label>
-      <div class="seg">
-        <label><input type="radio" name="role" value="user" checked> Download apps</label>
-        <label><input type="radio" name="role" value="developer"> Publish apps</label>
-      </div>
-      <div class="hint">Developer accounts are reviewed by an admin before you can upload.</div>
       <p style="margin-top:20px"><button class="btn" id="go">Create account</button></p>
     </div>
 
@@ -39,6 +34,7 @@
 <script>
 renderHeader(null, 'login');
 const $ = id => document.getElementById(id), msg = $('msg');
+const invite = qs('invite');          // developer invite token (only an admin can create one)
 let email = '';
 
 async function done() {
@@ -47,15 +43,29 @@ async function done() {
   location.href = homeFor(p.role);
 }
 
+/* Developer invite link: validate it and lock the email field */
+const ready = (async () => {
+  if (!invite) return;
+  const { data, error } = await sb.rpc('check_invite', { p_token: invite });
+  if (error || !data) {
+    $('stepForm').hidden = true; $('title').textContent = 'Invite not valid';
+    $('sub').textContent = 'This developer invite link is invalid, expired or already used. Please ask the admin for a new one.';
+    return;
+  }
+  $('title').textContent = 'Developer sign-up'; $('sub').textContent = 'You were invited to publish apps on Appex';
+  $('email').value = data; $('email').readOnly = true; $('inviteHint').hidden = false;
+})();
+
 $('go').onclick = async () => {
+  await ready;
   email = $('email').value.trim().toLowerCase();
   const full_name = $('name').value.trim(), password = $('password').value;
-  const role = document.querySelector('input[name=role]:checked').value;
   if (!full_name) return flash(msg, 'Please enter your name.');
   if (!validEmail(email)) return flash(msg, 'Enter a valid email address.');
   if (password.length < 8) return flash(msg, 'Password must be at least 8 characters.');
   $('go').disabled = true; flash(msg, '');
-  const { data, error } = await sb.auth.signUp({ email, password, options: { data: { full_name, role } } });
+  const meta = invite ? { full_name, invite_token: invite } : { full_name };
+  const { data, error } = await sb.auth.signUp({ email, password, options: { data: meta } });
   $('go').disabled = false;
   if (error) return flash(msg, AUTH.friendly(error));
   // Supabase hides "already registered" by returning a user without identities
@@ -82,6 +92,8 @@ $('resend').onclick = async () => {
   if (error) return flash(msg, AUTH.friendly(error));
   flash(msg, 'New code sent.', 'ok'); cooldown($('resend'));
 };
-$('change').onclick = () => { $('stepVerify').hidden = true; $('stepForm').hidden = false; flash(msg, ''); };
+$('change').onclick = () => {
+  $('stepVerify').hidden = true; $('stepForm').hidden = false; flash(msg, '');
+};
 </script>
 </body></html>
