@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Approvals · Appex</title><link rel="stylesheet" href="../css/style.css"></head>
+<body data-root="../">
+<div id="header"></div>
+<main class="wrap">
+  <h1 class="page">Pending approvals</h1>
+  <p class="sub">Download the APK, test it, then approve or reject.</p>
+  <div id="list"><p class="empty">Loading…</p></div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/core.js"></script>
+<script>
+let rows = [];
+async function load() {
+  const me = await requireRole(['admin']);
+  renderHeader(me, 'approvals');
+  const { data, error } = await sb.from('app_versions')
+    .select('id,version_name,version_code,apk_path,apk_size,changelog,created_at,apps(name,package_name,icon_path,short_desc,profiles(full_name,email))')
+    .eq('status', 'pending').order('created_at');
+  if (error) return toast(error.message, 'err');
+  rows = data;
+  document.getElementById('list').innerHTML = rows.length ? `<div class="tablewrap"><table>
+    <tr><th>App</th><th>Package</th><th>Developer</th><th>Version</th><th>Size</th><th>Uploaded</th><th></th></tr>
+    ${rows.map(r => `<tr>
+      <td><img class="mini" src="${iconUrl(r.apps.icon_path)}" alt="">${esc(r.apps.name)}</td>
+      <td>${esc(r.apps.package_name)}</td>
+      <td>${esc(r.apps.profiles.full_name)}<div class="hint">${esc(r.apps.profiles.email)}</div></td>
+      <td>${esc(r.version_name)} (${r.version_code})</td><td>${fmtSize(r.apk_size)}</td><td>${fmtDate(r.created_at)}</td>
+      <td><div class="actions">
+        <button class="btn ghost small" onclick="getApk('${r.id}')">Download APK</button>
+        <button class="btn small" onclick="review('${r.id}', true)">Approve</button>
+        <button class="btn danger small" onclick="review('${r.id}', false)">Reject</button></div></td></tr>`).join('')}
+    </table></div>` : '<p class="empty">No pending versions 🎉</p>';
+}
+async function getApk(id) {
+  const r = rows.find(x => x.id === id);
+  const { data, error } = await sb.storage.from('apks').createSignedUrl(r.apk_path, 120, { download: r.apps.package_name + '-' + r.version_name + '.apk' });
+  if (error) return toast(error.message, 'err');
+  location.href = data.signedUrl;
+}
+async function review(id, approve) {
+  let reason = null;
+  if (!approve) { reason = prompt('Reason for rejection (the developer will see this):'); if (!reason) return; }
+  const { error } = await sb.rpc('admin_review_version', { p_version_id: id, p_approve: approve, p_reason: reason });
+  if (error) return toast(error.message, 'err');
+  toast(approve ? 'Approved — app is now live' : 'Rejected'); load();
+}
+load();
+</script>
+</body></html>
