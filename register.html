@@ -11,7 +11,6 @@
     <div id="stepForm">
       <label>Full name</label><input id="name" type="text" autocomplete="name">
       <label>Email</label><input id="email" type="email" autocomplete="email" placeholder="you@example.com">
-      <div class="hint" id="inviteHint" hidden>This email comes from your invite and cannot be changed.</div>
       <label>Password (min 8 characters)</label><input id="password" type="password" autocomplete="new-password">
       <p style="margin-top:20px"><button class="btn" id="go">Create account</button></p>
     </div>
@@ -43,17 +42,16 @@ async function done() {
   location.href = homeFor(p.role);
 }
 
-/* Developer invite link: validate it and lock the email field */
+/* Developer invite link: check that it is still usable */
 const ready = (async () => {
   if (!invite) return;
   const { data, error } = await sb.rpc('check_invite', { p_token: invite });
-  if (error || !data) {
+  if (error || data !== true) {
     $('stepForm').hidden = true; $('title').textContent = 'Invite not valid';
-    $('sub').textContent = 'This developer invite link is invalid, expired or already used. Please ask the admin for a new one.';
+    $('sub').textContent = 'This developer invite link is no longer valid. Please ask the admin for a new one.';
     return;
   }
   $('title').textContent = 'Developer sign-up'; $('sub').textContent = 'You were invited to publish apps on Appex';
-  $('email').value = data; $('email').readOnly = true; $('inviteHint').hidden = false;
 })();
 
 $('go').onclick = async () => {
