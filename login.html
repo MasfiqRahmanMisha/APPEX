@@ -18,7 +18,7 @@
     <div id="stepVerify" hidden>
       <p class="hint" id="sentTo"></p>
       <label>Verification code</label>
-      <input id="code" class="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="••••••">
+      <div id="code"></div>
       <p style="margin-top:20px"><button class="btn" id="verify">Verify email</button></p>
       <p class="hint"><a class="link-btn" id="resend">Resend code</a> · <a class="link-btn" id="back">Back</a></p>
     </div>
@@ -32,7 +32,7 @@
     <div id="stepReset" hidden>
       <p class="hint" id="resetTo"></p>
       <label>Code from the email</label>
-      <input id="rcode" class="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="••••••">
+      <div id="rcode"></div>
       <label>New password (min 8 characters)</label><input id="newpw" type="password" autocomplete="new-password">
       <p style="margin-top:20px"><button class="btn" id="doReset">Set new password</button></p>
     </div>
@@ -49,6 +49,8 @@ const $ = id => document.getElementById(id), msg = $('msg');
 const STEPS = ['stepLogin', 'stepVerify', 'stepForgot', 'stepReset'];
 const show = id => { STEPS.forEach(s => $(s).hidden = s !== id); flash(msg, ''); };
 let email = '';
+const codeBox = mountCodeInput($('code'), () => $('verify').click());
+const resetBox = mountCodeInput($('rcode'), () => $('newpw').focus());
 
 async function done() {
   const p = await getProfile();
@@ -67,7 +69,7 @@ async function login() {
   if (/not confirmed/i.test(error.message)) {            // registered earlier but never verified the email
     await AUTH.resend(email);
     $('sentTo').textContent = 'Your email is not verified yet. We sent a code to ' + email + '.';
-    show('stepVerify'); $('code').focus(); cooldown($('resend')); return;
+    show('stepVerify'); codeBox.focus(); cooldown($('resend')); return;
   }
   flash(msg, AUTH.friendly(error));
 }
@@ -76,8 +78,8 @@ $('password').addEventListener('keydown', e => { if (e.key === 'Enter') login();
 
 /* ---- 2) verify email (only needed once, for unverified accounts) ---- */
 $('verify').onclick = async () => {
-  const code = $('code').value.replace(/\s/g, '');
-  if (!/^\d{6,10}$/.test(code)) return flash(msg, 'Enter the numeric code from the email.');
+  const code = codeBox.value();
+  if (!/^\d{6,10}$/.test(code)) return flash(msg, 'Enter the full code from the email.');
   $('verify').disabled = true;
   const { error } = await AUTH.verify(email, code, 'signup');
   $('verify').disabled = false;
@@ -103,11 +105,11 @@ $('sendReset').onclick = async () => {
   $('sendReset').disabled = false;
   if (error) return flash(msg, AUTH.friendly(error));
   $('resetTo').textContent = 'If an account exists for ' + email + ', we sent a code to it.';
-  show('stepReset'); $('rcode').focus();
+  show('stepReset'); resetBox.focus();
 };
 $('doReset').onclick = async () => {
-  const code = $('rcode').value.replace(/\s/g, ''), pw = $('newpw').value;
-  if (!/^\d{6,10}$/.test(code)) return flash(msg, 'Enter the numeric code from the email.');
+  const code = resetBox.value(), pw = $('newpw').value;
+  if (!/^\d{6,10}$/.test(code)) return flash(msg, 'Enter the full code from the email.');
   if (pw.length < 8) return flash(msg, 'Password must be at least 8 characters.');
   $('doReset').disabled = true;
   const v = await AUTH.verify(email, code, 'recovery');
