@@ -44,7 +44,7 @@ async function load() {
         <div><label>Version name</label><input id="vname" type="text" placeholder="1.0.1"></div>
         <div><label>Version code (must be ≥ ${nextCode})</label><input id="vcode" type="number" min="${nextCode}" value="${nextCode}"></div>
       </div>
-      <label>What’s new</label><textarea id="changelog" style="min-height:70px"></textarea>
+      <label>What’s new *</label><textarea id="changelog" style="min-height:70px" maxlength="2000" placeholder="e.g. Fixed the login crash, faster loading"></textarea>
       <label>APK file (max 50 MB)</label><input id="apk" type="file" accept=".apk">
       <p style="margin-top:20px"><button class="btn" id="go" onclick="addVersion()">Upload for review</button></p>
     </div>`;
@@ -58,6 +58,8 @@ async function addVersion() {
   const apk = document.getElementById('apk').files[0];
   if (!vname) return flash(msg, 'Version name is required.');
   if (!(vcode >= nextCode)) return flash(msg, 'Version code must be at least ' + nextCode + '.');
+  const changelog = document.getElementById('changelog').value.trim();
+  if (changelog.length < 3) return flash(msg, 'Please describe what is new in this version (at least 3 characters).');
   if (!apk) return flash(msg, 'Choose an APK file.');
   if (apk.size > 50 * 1024 * 1024) return flash(msg, 'APK is larger than 50 MB.');
   if (!(await looksLikeApk(apk))) return flash(msg, 'This does not look like a valid .apk file.');
@@ -69,7 +71,7 @@ async function addVersion() {
     if (up.error) throw up.error;
     const ins = await sb.from('app_versions').insert({
       app_id: appId, version_name: vname, version_code: vcode, apk_path: path, apk_size: apk.size,
-      changelog: document.getElementById('changelog').value.trim() || null });
+      changelog });
     if (ins.error) { await sb.storage.from('apks').remove([path]); throw ins.error; }
     toast('Uploaded — waiting for admin approval'); load();
   } catch (e) { flash(msg, e.message); btn.disabled = false; btn.textContent = 'Upload for review'; }
