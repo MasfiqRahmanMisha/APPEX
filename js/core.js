@@ -60,6 +60,41 @@ const AUTH = {
     return m;
   }
 };
+/* ---------- one-box-per-digit code input (works with typing, paste and SMS autofill) ---------- */
+function mountCodeInput(el, onComplete) {
+  const length = Number(window.APP_CONFIG.OTP_LENGTH) || 8;          // must match Supabase "Email OTP Length"
+  el.className = 'code-boxes'; el.innerHTML = '';
+  const boxes = Array.from({ length }, (_, i) => {
+    const b = document.createElement('input');
+    b.type = 'text'; b.inputMode = 'numeric'; b.autocomplete = i === 0 ? 'one-time-code' : 'off';
+    b.setAttribute('aria-label', 'Digit ' + (i + 1)); b.className = 'code-box';
+    el.appendChild(b); return b;
+  });
+  const value = () => boxes.map(b => b.value).join('');
+  const fill = (from, digits) => {
+    digits.split('').forEach((d, k) => { if (boxes[from + k]) boxes[from + k].value = d; });
+    const next = Math.min(from + digits.length, length - 1); boxes[next].focus();
+    if (value().length === length && onComplete) onComplete(value());
+  };
+  boxes.forEach((b, i) => {
+    b.addEventListener('input', () => {
+      const d = b.value.replace(/\D/g, ''); b.value = '';
+      if (d) fill(i, d);
+    });
+    b.addEventListener('keydown', e => {
+      if (e.key === 'Backspace' && !b.value && i > 0) { boxes[i - 1].value = ''; boxes[i - 1].focus(); e.preventDefault(); }
+      else if (e.key === 'ArrowLeft' && i > 0) boxes[i - 1].focus();
+      else if (e.key === 'ArrowRight' && i < length - 1) boxes[i + 1].focus();
+      else if (e.key === 'Enter' && onComplete) onComplete(value());
+    });
+    b.addEventListener('paste', e => {
+      e.preventDefault(); fill(i, (e.clipboardData.getData('text') || '').replace(/\D/g, '').slice(0, length - i));
+    });
+    b.addEventListener('focus', () => b.select());
+  });
+  return { value, focus: () => boxes[0].focus(), clear: () => { boxes.forEach(b => b.value = ''); boxes[0].focus(); } };
+}
+
 // "Resend in 42s" countdown on a link element
 function cooldown(el, seconds = 60) {
   el.dataset.locked = '1';
