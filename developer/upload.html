@@ -20,7 +20,7 @@
       <div><label>Version name</label><input id="vname" type="text" placeholder="1.0.0"></div>
       <div><label>Version code</label><input id="vcode" type="number" min="1" value="1"></div>
     </div>
-    <label>What’s new (optional)</label><textarea id="changelog" style="min-height:70px"></textarea>
+    <label>What’s new *</label><textarea id="changelog" style="min-height:70px" maxlength="2000">Initial release</textarea>
     <div class="row2">
       <div><label>App icon (PNG/JPG/WebP, max 2 MB)</label><input id="icon" type="file" accept="image/png,image/jpeg,image/webp"></div>
       <div><label>APK file (max 50 MB)</label><input id="apk" type="file" accept=".apk"></div>
@@ -54,6 +54,7 @@ document.getElementById('go').onclick = async () => {
   if (v('name').length < 2 || !v('short') || !v('desc') || !v('vname')) return flash(msg, 'Please fill all required fields.');
   if (!pkgOk) return flash(msg, 'Package name looks invalid. Example: com.company.myapp');
   if (!(Number(v('vcode')) > 0)) return flash(msg, 'Version code must be a positive number.');
+  if (v('changelog').length < 3) return flash(msg, 'Please describe what is new in this version (at least 3 characters).');
   if (!apk || !icon) return flash(msg, 'Please choose both an APK file and an icon.');
   if (apk.size > MAX_APK) return flash(msg, 'APK is larger than 50 MB (Supabase free plan limit).');
   if (icon.size > MAX_ICON) return flash(msg, 'Icon is larger than 2 MB.');
@@ -79,7 +80,7 @@ document.getElementById('go').onclick = async () => {
 
     const ver = await sb.from('app_versions').insert({
       app_id: a.data.id, version_name: v('vname'), version_code: Number(v('vcode')),
-      apk_path: apkPath, apk_size: apk.size, changelog: v('changelog') || null
+      apk_path: apkPath, apk_size: apk.size, changelog: v('changelog')
     });
     if (ver.error) { await sb.from('apps').delete().eq('id', a.data.id); throw ver.error; }
 
