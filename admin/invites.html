@@ -4,24 +4,28 @@
 <body data-root="../">
 <div id="header"></div>
 <main class="wrap">
-  <h1 class="page">Developer invites</h1>
-  <p class="sub">Developers can only join through a link you create here. Each link works once, for one email.</p>
+  <h1 class="page">Developer invite links</h1>
+  <p class="sub">Anyone who registers through an active link becomes a developer. One link can be shared with many people and stays valid until you disable it.</p>
 
   <div class="form-card wide" style="margin:0 0 24px;max-width:none">
     <div id="msg"></div>
     <div class="row2">
-      <div><label>Developer’s email</label><input id="email" type="email" placeholder="developer@example.com"></div>
-      <div><label>Link valid for</label>
-        <select id="days"><option value="3">3 days</option><option value="7" selected>7 days</option><option value="14">14 days</option><option value="30">30 days</option></select></div>
+      <div><label>Label (optional)</label><input id="note" type="text" maxlength="80" placeholder="e.g. CSE batch 2023"></div>
+      <div><label>Valid for</label>
+        <select id="days"><option value="">No expiry (until I disable it)</option><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option></select></div>
+    </div>
+    <div class="row2">
+      <div><label>Maximum sign-ups (optional)</label><input id="max" type="number" min="1" placeholder="Unlimited"></div>
+      <div></div>
     </div>
     <p style="margin-top:18px"><button class="btn" id="create">Create invite link</button></p>
     <div id="fresh" hidden>
-      <label>Send this link to the developer</label>
+      <label>Share this link with developers</label>
       <div style="display:flex;gap:8px"><input id="freshLink" type="text" readonly><button class="btn ghost" id="copyFresh">Copy</button></div>
     </div>
   </div>
 
-  <div class="section-head"><h2>All invites</h2></div>
+  <div class="section-head"><h2>All links</h2></div>
   <div id="list"><p class="empty">Loading…</p></div>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
@@ -36,6 +40,12 @@ async function copy(text) {
   try { await navigator.clipboard.writeText(text); toast('Link copied'); }
   catch (e) { prompt('Copy this link:', text); }
 }
+function status(r) {
+  if (!r.is_active) return badge('rejected', 'Disabled');
+  if (r.expires_at && new Date(r.expires_at) < new Date()) return badge('rejected', 'Expired');
+  if (r.max_uses && Number(r.use_count) >= r.max_uses) return badge('pending', 'Full');
+  return badge('approved', 'Active');
+}
 
 async function load() {
   const me = await requireRole(['admin']);
@@ -44,37 +54,34 @@ async function load() {
   if (error) return toast(error.message, 'err');
   rows = data;
   $('list').innerHTML = rows.length ? `<div class="tablewrap"><table>
-    <tr><th>Email</th><th>Status</th><th>Created</th><th>Expires</th><th></th></tr>
-    ${rows.map(r => {
-      const expired = !r.used_at && new Date(r.expires_at) < new Date();
-      const st = r.used_at ? badge('approved', 'Used' + (r.used_by_name ? ' by ' + r.used_by_name : ''))
-               : expired ? badge('rejected', 'Expired') : badge('pending', 'Active');
-      const acts = (!r.used_at && !expired)
-        ? `<div class="actions"><button class="btn ghost small" onclick="copyRow('${r.id}')">Copy link</button>
-           <button class="btn danger small" onclick="revoke('${r.id}')">Revoke</button></div>`
-        : (!r.used_at ? `<button class="btn danger small" onclick="revoke('${r.id}')">Delete</button>` : '');
-      return `<tr><td>${esc(r.email)}</td><td>${st}</td><td>${fmtDate(r.created_at)}</td><td>${fmtDate(r.expires_at)}</td><td>${acts}</td></tr>`;
-    }).join('')}</table></div>` : '<p class="empty">No invites yet.</p>';
+    <tr><th>Label</th><th>Status</th><th>Joined</th><th>Created</th><th>Expires</th><th></th></tr>
+    ${rows.map(r => `<tr>
+      <td>${esc(r.note || '—')}</td><td>${status(r)}</td>
+      <td>${fmtNum(r.use_count)}${r.max_uses ? ' / ' + fmtNum(r.max_uses) : ''}</td>
+      <td>${fmtDate(r.created_at)}</td><td>${r.expires_at ? fmtDate(r.expires_at) : 'Never'}</td>
+      <td><div class="actions"><button class="btn ghost small" onclick="copyRow('${r.id}')">Copy link</button>
+        <button class="btn ${r.is_active ? 'danger' : ''} small" onclick="toggle('${r.id}', ${!r.is_active})">${r.is_active ? 'Disable' : 'Enable'}</button></div></td></tr>`).join('')}
+    </table></div>` : '<p class="empty">No invite links yet.</p>';
 }
 function copyRow(id) { copy(linkFor(rows.find(r => r.id === id).token)); }
 
 $('create').onclick = async () => {
-  const email = $('email').value.trim();
-  if (!validEmail(email)) return flash(msg, 'Enter a valid email address.');
+  const days = $('days').value, max = $('max').value;
   $('create').disabled = true; flash(msg, '');
-  const { data, error } = await sb.rpc('admin_create_invite', { p_email: email, p_days: Number($('days').value) });
+  const { data, error } = await sb.rpc('admin_create_invite', {
+    p_note: $('note').value.trim() || null, p_days: days ? Number(days) : null, p_max_uses: max ? Number(max) : null });
   $('create').disabled = false;
   if (error) return flash(msg, error.message);
-  $('freshLink').value = linkFor(data); $('fresh').hidden = false; $('email').value = '';
+  $('freshLink').value = linkFor(data); $('fresh').hidden = false; $('note').value = '';
   copy(linkFor(data)); load();
 };
 $('copyFresh').onclick = () => copy($('freshLink').value);
 
-async function revoke(id) {
-  if (!confirm('Remove this invite link? It will stop working.')) return;
-  const { error } = await sb.rpc('admin_revoke_invite', { p_id: id });
+async function toggle(id, flag) {
+  if (!flag && !confirm('Disable this link? New people will not be able to join as developers with it. Existing developers keep their access.')) return;
+  const { error } = await sb.rpc('admin_set_invite_active', { p_id: id, p_flag: flag });
   if (error) return toast(error.message, 'err');
-  toast('Invite removed'); load();
+  toast(flag ? 'Link enabled' : 'Link disabled'); load();
 }
 load();
 </script>
