@@ -18,7 +18,7 @@
     <div id="stepVerify" hidden>
       <p class="hint" id="sentTo"></p>
       <label>Verification code</label>
-      <input id="code" class="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="••••••">
+      <div id="code"></div>
       <p style="margin-top:20px"><button class="btn" id="verify">Verify &amp; continue</button></p>
       <p class="hint">You only verify once — next time just sign in with your password.</p>
       <p class="hint"><a class="link-btn" id="resend">Resend code</a> · <a class="link-btn" id="change">Change details</a></p>
@@ -35,6 +35,7 @@ renderHeader(null, 'login');
 const $ = id => document.getElementById(id), msg = $('msg');
 const invite = qs('invite');          // developer invite token (only an admin can create one)
 let email = '';
+const codeBox = mountCodeInput($('code'), () => $('verify').click());
 
 async function done() {
   const p = await getProfile();
@@ -71,19 +72,18 @@ $('go').onclick = async () => {
     return flash(msg, 'This email is already registered. Please sign in.');
   if (data.session) return done();                       // email confirmation is switched off in Supabase
   $('sentTo').textContent = 'We sent a verification code to ' + email + '. It may take a minute — check spam too.';
-  $('stepForm').hidden = true; $('stepVerify').hidden = false; $('code').focus(); cooldown($('resend'));
+  $('stepForm').hidden = true; $('stepVerify').hidden = false; codeBox.focus(); cooldown($('resend'));
 };
 
 $('verify').onclick = async () => {
-  const code = $('code').value.replace(/\s/g, '');
-  if (!/^\d{6,10}$/.test(code)) return flash(msg, 'Enter the numeric code from the email.');
+  const code = codeBox.value();
+  if (!/^\d{6,10}$/.test(code)) return flash(msg, 'Enter the full code from the email.');
   $('verify').disabled = true;
   const { error } = await AUTH.verify(email, code, 'signup');
   $('verify').disabled = false;
   if (error) return flash(msg, AUTH.friendly(error));
   done();
 };
-$('code').addEventListener('keydown', e => { if (e.key === 'Enter') $('verify').click(); });
 $('resend').onclick = async () => {
   if ($('resend').dataset.locked) return;
   const { error } = await AUTH.resend(email);
