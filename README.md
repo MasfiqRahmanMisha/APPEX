@@ -16,7 +16,7 @@ A Play Store-style APK marketplace with a clean glassmorphism UI.
 </div>
 
 <p align="center">
-  <img src="docs/screenshots/home.jpg" alt="Appex store" width="860">
+  <img src="docs/screenshots/Appex Poster.png" alt="Appex store" width="860">
 </p>
 
 ## What is Appex?
