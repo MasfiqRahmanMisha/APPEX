@@ -115,6 +115,9 @@ function homeFor(role) {
 
 async function logout() { await sb.auth.signOut(); location.href = ROOT + 'index.html'; }
 
+/* ---------- favicon (same logo file) ---------- */
+(() => { const l = document.createElement('link'); l.rel = 'icon'; l.href = ROOT + 'assets/logo.png'; document.head.appendChild(l); })();
+
 /* ---------- header ---------- */
 function renderHeader(profile, active = '') {
   const L = (href, label, key) => `<a href="${ROOT}${href}" class="${active === key ? 'active' : ''}">${label}</a>`;
@@ -131,7 +134,10 @@ function renderHeader(profile, active = '') {
   }
   document.getElementById('header').innerHTML = `
     <div class="topbar"><div class="topbar-in">
-      <a class="brand" href="${ROOT}index.html"><span class="brand-logo"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5z"/></svg></span>Appex</a>
+      <a class="brand" href="${ROOT}index.html" aria-label="Appex">
+        <img class="brand-img" src="${ROOT}assets/logo.png" alt="Appex" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'">
+        <span class="brand-logo" style="display:none"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5z"/></svg></span>
+        ${window.APP_CONFIG.LOGO_ONLY ? '' : '<span class="brand-name">Appex</span>'}</a>
       <form class="search" action="${ROOT}index.html" method="get">
         <input name="q" type="search" placeholder="Search apps" value="${esc(qs('q') || '')}"></form>
       <nav class="nav">${nav}</nav>
