@@ -1,100 +1,132 @@
-# Appex — Supabase + HTML/CSS/JS
+<div align="center">
 
-Play Store-এর মতো একটি APK marketplace। তিনটি actor: **User**, **Developer**, **Admin**।
+<img src="assets/logo.png" alt="Appex logo" width="96">
 
-## ফোল্ডার স্ট্রাকচার
+# Appex
+
+**Discover and publish Android apps.**
+A Play Store-style APK marketplace with a clean glassmorphism UI.
+
+![HTML/CSS/JS](https://img.shields.io/badge/frontend-HTML%20%7C%20CSS%20%7C%20JS-0b9a6d)
+![Supabase](https://img.shields.io/badge/backend-Supabase-3ecf8e)
+![Postgres RLS](https://img.shields.io/badge/security-Postgres%20RLS-336791)
+![License](https://img.shields.io/badge/license-MIT-blue)
+
+[বাংলা সেটআপ গাইড](README.bn.md)
+
+</div>
+
+<p align="center">
+  <img src="docs/screenshots/home.jpg" alt="Appex store" width="860">
+</p>
+
+## What is Appex?
+
+Appex is a small, self-hosted app marketplace where **developers upload APKs**, **admins review every release**, and **users download and rate apps**. It runs entirely on a static frontend plus Supabase (Postgres, Auth, Storage) — no custom server to maintain.
+
+## Features
+
+**For users**
+- Play Store-style store: search, categories, *Most downloaded*, *New & updated*
+- App pages with version, size, changelog, ratings and reviews
+- Reviews are only possible **after downloading** the app
+
+**For developers** *(invite-only)*
+- Join through an admin-created invite link
+- Upload apps and new versions; **"What's new" is required** for every release
+- Dashboard: apps launched, total downloads, overall rating, most downloaded app
+
+**For admins**
+- Approval queue: download the APK, test it, approve or reject with a reason
+- Manage apps (suspend/restore) and users (ban/unban, approve/revoke developers)
+- Create reusable developer invite links (optional expiry and sign-up limit, disable anytime)
+- Dashboard: total apps, total downloads, pending approvals, developers, users
+- Optional e-mail alerts: admins on every upload, developers on approve/reject
+
+**Under the hood**
+- Postgres **Row Level Security** and column-level grants: nobody can promote themselves, skip approval or fake downloads
+- **Private APK storage** — files are only served through short-lived signed URLs, and each download is counted by a database function
+- E-mail + password sign-in with a one-time e-mail verification code and a code-based password reset
+- Responsive glassmorphism design, mobile first
+
+## Screenshots
+
+*(Demo data)*
+
+| Developer dashboard | Admin dashboard |
+|---|---|
+| ![Developer dashboard](docs/screenshots/developer-dashboard.jpg) | ![Admin dashboard](docs/screenshots/admin-dashboard.jpg) |
+
+| App page | Mobile |
+|---|---|
+| ![App page](docs/screenshots/app-detail.jpg) | <img src="docs/screenshots/mobile-home.jpg" alt="Mobile" width="260"> |
+
+## How it works
 
 ```
-apk-portal/
-├── index.html              Store হোম (user dashboard): search, category, top downloads
-├── app.html                App details, download, rating/review
-├── login.html / register.html   Email + password (email একবার verify)
-├── developer/
-│   ├── dashboard.html      launched apps, total downloads, overall rating, most downloaded app
-│   ├── upload.html         নতুন app + APK upload
-│   └── app.html            নিজের app-এর versions + নতুন version upload
-├── admin/
-│   ├── dashboard.html      total apps, downloads, pending approvals, developers, users
-│   ├── approvals.html      APK ডাউনলোড করে test → approve / reject
-│   ├── apps.html           সব app, suspend / restore
-│   └── users.html          user/developer list, ban / unban
-├── js/config.js            Supabase URL + anon key (এখানে বসাবে)
-├── js/core.js              Supabase client, auth guard, header, helper
-├── css/style.css           Play Store-style light theme
-└── sql/                    01 → 05 ক্রমে run করতে হবে
+Developer uploads APK ─▶ version is "pending" ─▶ Admin tests & approves ─▶ app goes live
+                                   │                        │
+                          e-mail to admins          e-mail to developer
+User signs in ─▶ downloads (counted once per user & version) ─▶ can rate & review
 ```
 
-## Setup
+## Tech stack
 
-1. https://supabase.com এ project বানাও।
-2. **SQL Editor**-এ `sql/01_schema.sql` → `05_seed.sql` **ক্রমানুযায়ী** run করো।
-   - আগে থেকেই 01–05 চালানো থাকলে শুধু `06_developer_approval_migration.sql` চালাও (নতুন install-এ 06 লাগবে না)।
-3. **Project Settings → API** থেকে Project URL ও publishable key `js/config.js`-এ বসাও।
-4. Email পাঠানোর জন্য SMTP সেটআপ করো (নিচে দেখো)।
-5. VS Code *Live Server* দিয়ে লোকালে চালাও, অথবা Vercel-এ deploy করো।
+| Layer | Technology |
+|---|---|
+| Frontend | HTML, CSS, vanilla JavaScript (no build step) |
+| Database & API | Supabase Postgres + PostgREST, RPC functions |
+| Auth | Supabase Auth (e-mail + password, e-mail OTP verification) |
+| Files | Supabase Storage (private `apks`, public `icons`) |
+| Notifications | Postgres triggers + `pg_net` + Brevo API *(optional)* |
+| Hosting | Vercel (static) |
 
-## Login: email + password (email শুধু একবার verify)
+## Quick start
 
-- **Register:** নাম, email, password (কমপক্ষে ৮ অক্ষর) দিলে email-এ একটা ৬ সংখ্যার **কোড** যায়। কোডটা একবার দিলেই email verified। 
-- **এরপর সবসময়** শুধু email + password দিয়ে login, আর কোড লাগে না।
-- **Password ভুলে গেলে:** Login পেজে *Forgot password?* → email-এ কোড → নতুন password।
-- Password Supabase-এ plain text-এ থাকে না, শুধু hash থাকে।
-
-### Email পাঠানোর জন্য custom SMTP (একবারের সেটআপ)
-
-Supabase-এর নিজস্ব email সার্ভিস শুধু **তোমার team-এর সদস্যদের** email-এ পাঠায় এবং ঘণ্টায় মাত্র ২টা। তাই বাইরের কারো কাছে verification mail যায় না। সমাধান: custom SMTP।
-
-1. Supabase → **Authentication → Emails → SMTP Settings** → *Enable custom SMTP*।
-   - **Gmail:** Host `smtp.gmail.com`, Port `465`, Username = পুরো Gmail, Password = **App password** (Google Account → Security → 2-Step Verification চালু করে `myaccount.google.com/apppasswords`), Sender email = ওই Gmail।
-   - **Brevo:** Host `smtp-relay.brevo.com`, Port `587`, Password = SMTP key।
-2. **Authentication → Emails → Templates**-এ **Confirm signup** এবং **Reset Password** — দুটোর body-তে link-এর বদলে এটা বসাও:
-   ```html
-   <h2>Your Appex code</h2>
-   <p>Enter this code to continue:</p>
-   <p style="font-size:28px;letter-spacing:6px"><b>{{ .Token }}</b></p>
-   <p>If you did not request it, ignore this email.</p>
+1. Create a project at [supabase.com](https://supabase.com).
+2. In **SQL Editor** run, in order: `sql/01_schema.sql`, `02_functions.sql`, `03_rls.sql`, `04_storage.sql`, `05_seed.sql`, then `10_email_notifications.sql` and `11_require_changelog.sql`.
+   *(Upgrading an older install? Run the numbered migrations `06` → `09` as well — see the [setup guide](README.bn.md).)*
+3. Copy your **Project URL** and **publishable key** into `js/config.js`.
+4. Configure custom SMTP in Supabase (Authentication → Emails) so verification codes can be delivered, and make the *Confirm signup* / *Reset password* templates show `{{ .Token }}`.
+5. Open the folder with a local server (VS Code *Live Server*) or deploy to Vercel (*Framework preset: Other*).
+6. Make yourself admin:
+   ```sql
+   insert into public.admin_emails (email) values ('you@example.com');
    ```
-3. **Authentication → Sign In / Providers → Email**-এ *Confirm email* **চালু** রাখো।
+   then register with that e-mail and verify the code.
 
-> SMTP ঠিক না হওয়া পর্যন্ত চাইলে *Confirm email* বন্ধ রাখো। তখন register করলেই সরাসরি ঢোকা যায় (কোড লাগে না) — কোডে কিছু বদলাতে হয় না, সাইট নিজেই বুঝে নেয়। তবে এই অবস্থায় email যাচাই হয় না, তাই লাইভে দেওয়ার আগে চালু করো।
+**Your own logo:** put it at `assets/logo.png` (lowercase) — it appears in the navbar and as the favicon.
 
-## Admin বানানো
+## Project structure
 
-SQL Editor-এ নিজের email allow-list-এ বসাও (register করার **আগে**):
-
-```sql
-insert into public.admin_emails (email) values ('your-admin@email.com');
+```
+appex/
+├── index.html · app.html · login.html · register.html     store, app page, auth
+├── developer/   dashboard · upload · app (versions)
+├── admin/       dashboard · approvals · apps · users · invites
+├── js/          config.js (your keys) · core.js (client, auth guard, helpers)
+├── css/style.css
+├── assets/logo.png · img/bg.svg
+├── sql/         schema, functions, RLS, storage, migrations, e-mail notifications
+└── docs/        screenshots · ABOUT.md (descriptions & captions)
 ```
 
-তারপর সাইটে ওই email + password দিয়ে Register করে কোড verify করলেই তুমি admin dashboard-এ ঢুকবে। (email verify না হওয়া পর্যন্ত admin হয় না, তাই অন্য কেউ তোমার email লিখে admin হতে পারবে না।)
+## Security notes
 
-account আগেই থাকলে অথবা *Confirm email* বন্ধ থাকলে SQL দিয়ে:
-```sql
-update public.profiles set role = 'admin' where email = 'your-admin@email.com';
-```
-এরপর Sign out করে আবার Sign in করো।
+- The Supabase **publishable key** in `js/config.js` is meant to be public — Row Level Security protects the data.
+- **Never commit** the `secret`/`service_role` key, database password, SMTP app password or Brevo API key.
+- Developer invite links grant the developer role to whoever uses them — share them only with people you trust and disable a link if it leaks.
 
-## Developer approval
+## Limitations
 
-নতুন Developer account আগে **Pending** থাকে; **Admin → Users → Approve** না করা পর্যন্ত app/APK upload করতে পারে না (database ও storage policy দিয়েই আটকানো)। Admin চাইলে পরে **Revoke** করতে পারে।
+- Supabase **Free plan** caps a single upload at **50 MB** and pauses idle projects after a week.
+- Package name and version are entered by the developer (the APK is not parsed).
+- There is no automatic malware scan; the admin's manual review is the safety net.
 
-## Vercel-এ deploy
+## Author
 
-- সাইটটা static: Framework Preset **Other**, build command ও output directory ফাঁকা।
-- `js/config.js` অবশ্যই repo-তে commit থাকতে হবে (না থাকলে সাইট Supabase-এ কানেক্ট হবে না)।
-- Supabase → **Authentication → URL Configuration** → *Site URL*-এ তোমার Vercel লিংক দাও। (কোড দিয়ে verify হয়, তবু রাখা ভালো।)
+Built by **Masfiq Rahman Misha**.
 
-## কীভাবে কাজ করে
+## License
 
-- **Upload:** Developer APK → private bucket `apks/<uid>/<uuid>.apk`, icon → public bucket `icons/`। DB-তে `apps` + `app_versions` (status = `pending`)।
-- **Approval:** Admin APK ডাউনলোড করে test করে approve/reject করে। Approve হলে app store-এ দেখা যায়।
-- **Download:** `record_download()` function লগইন চেক করে, download গুনে, তারপর ৬০ সেকেন্ডের signed URL দেওয়া হয়। এক user এক version একবারই গোনা হয়।
-- **Review:** শুধু যে user app ডাউনলোড করেছে সে-ই rating/review দিতে পারে।
-- **নিরাপত্তা:** সব নিয়ম Postgres RLS + column grant দিয়ে database-এই বাধ্য করা। frontend বদলালেও role/status/ban পাল্টানো যায় না।
-
-## সীমাবদ্ধতা
-
-- Supabase **Free plan-এ প্রতি ফাইল max 50 MB**। বড় APK হলে Pro plan লাগবে (bucket limit-ও বাড়াতে হবে)।
-- Free project ৭ দিন নিষ্ক্রিয় থাকলে pause হয়ে যায়।
-- APK-এর ভেতরের package name/version অটো পড়া হয় না; developer নিজে লেখে।
-- Malware scan নেই; admin-এর manual review-ই একমাত্র যাচাই।
+[MIT](LICENSE)
