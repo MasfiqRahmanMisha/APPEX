@@ -12,7 +12,6 @@ A Play Store-style APK marketplace with a clean glassmorphism UI.
 ![Postgres RLS](https://img.shields.io/badge/security-Postgres%20RLS-336791)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-[বাংলা সেটআপ গাইড](README.bn.md)
 
 </div>
 
